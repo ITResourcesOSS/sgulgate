@@ -8,5 +8,4 @@ import (
 func main() {
 	config.LoadConfiguration()
 	gateway.New().Start()
-
 }
