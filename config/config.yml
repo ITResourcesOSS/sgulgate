@@ -5,12 +5,12 @@ service:
 gateway:
   endpoint:
     schema: http
-    path: "/sosm-api"
-    port: '9000'
+    path: /sosm-api/
+    port: 9000
   admin:
     schema: http
-    path: "/sosm-api-admin"
-    port: '9001'
+    path: /sosm-api-admin
+    port: 9001
     scurity:
       enabled: true
       jwt:
@@ -20,7 +20,7 @@ gateway:
           minutes: 13149000
   cors:
     origin:
-        - *
+        - "*"
     methods:
         - GET
         - PUT
@@ -31,3 +31,32 @@ gateway:
         - Authorization
         - Content-Type
         - X-CSRF-Token
+api:
+  name: SosMedicoAPI
+  endpoints:
+  - name: uaa
+    path: /uaa-service
+    version: 1
+    proxy:
+      targets:
+      - schema: http
+        host: localhost:7777
+        path: /api/v1
+      - schema: http
+        host: localhost:7778
+        path: /api/v1
+      balancing: # one from "round-robin" or "random"
+        strategy: random
+  - name: account
+    path: /account-service
+    version: 1
+    proxy:
+      targets:
+      - schema: http
+        host: localhost:8888
+        path: /api/v1
+      - schema: http
+        host: localhost:8889
+        path: /api/v1
+      balancing: # one from "round-robin" or "random"
+        strategy: random
