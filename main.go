@@ -7,7 +7,6 @@ import (
 
 func main() {
 	config.LoadConfiguration()
-	gw := gateway.New()
-	gw.Start()
+	gateway.New().Start()
 
 }
