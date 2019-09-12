@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +10,9 @@ import (
 
 	"github.com/ITResourcesOSS/sgulgate/internal/config"
 )
+
+// ErrNoAPIFound returned if no API definition has been provvisioned for the request path.
+var ErrNoAPIFound = errors.New("No API definition for request path")
 
 type apiDefinition struct {
 	name      string
@@ -19,14 +23,20 @@ type apiDefinition struct {
 
 // Gateway .
 type Gateway struct {
-	api map[string]apiDefinition
+	api     map[string]apiDefinition
+	proxies map[string]*Proxy
 }
 
 // New returns a new instance of the Gateway struct.
 func New() Gateway {
-	gw := Gateway{api: make(map[string]apiDefinition)}
+	gw := Gateway{
+		api:     make(map[string]apiDefinition),
+		proxies: make(map[string]*Proxy),
+	}
+
 	apiConf := config.Config.API
 	log.Printf("configuring %s definitions", apiConf.Name)
+
 	for _, endpoint := range apiConf.Endpoints {
 		path := fmt.Sprintf("%s/v%s", endpoint.Path, endpoint.Version)
 		apiDef := apiDefinition{
@@ -42,6 +52,7 @@ func New() Gateway {
 				fmt.Sprintf("%s://%s%s", target.Schema, target.Host, target.Path))
 		}
 		gw.api[path] = apiDef
+		gw.proxies[path] = NewProxy(apiDef)
 
 		log.Printf("endpoint name: %s - path: %s - targets: %+v", apiDef.name, apiDef.path, apiDef.endpoints)
 	}
@@ -66,10 +77,19 @@ func (gw Gateway) Start() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		log.Printf("Name: %s", name)
-		log.Printf("Version: %s", version)
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+
+		apiPath := fmt.Sprintf("/%s/%s", name, version)
+		log.Printf("serving %s", apiPath)
+
+		upstreamProxy := gw.proxies[apiPath]
+		if upstreamProxy == nil {
+			http.Error(w, ErrNoAPIFound.Error(), http.StatusNotFound)
+			log.Printf("error serving request: %s", ErrNoAPIFound.Error())
+			return
+		}
+
+		upstreamProxy.Handler.ServeHTTP(w, req)
+
 	})
 	gw.serve()
 }
