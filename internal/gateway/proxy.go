@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -21,7 +20,8 @@ var ErrInvalidService = errors.New("invalid service/version")
 var LoadBalance = loadBalance
 
 type transport struct {
-	*http.Transport
+	apiDef apiDefinition
+	tr     *http.Transport
 }
 
 // Proxy .
@@ -37,25 +37,25 @@ type APIProxy struct {
 
 // MonitoringPath .
 type MonitoringPath struct {
-	Path        string
-	Count       int64
-	Duration    time.Duration
-	AverageTime int64
+	UpstreamPath string
+	Count        int64
+	Duration     time.Duration
+	AverageTime  int64
 }
 
 var globalMap = make(map[string]MonitoringPath)
 
 func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
-	log.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> RoundTrip")
+	key := req.Method + "-" + t.apiDef.path + req.URL.Path
 	start := time.Now()
-	response, err := http.DefaultTransport.RoundTrip(req)
+	//response, err := http.DefaultTransport.RoundTrip(req)
+	req.URL.Path = t.apiDef.upstreamPath + req.URL.Path
+	response, err := t.tr.RoundTrip(req)
 	if err != nil {
 		print("\n\ncame in error resp here", err)
 		return nil, err
 	}
 	elapsed := time.Since(start)
-
-	key := req.Method + "-" + req.URL.Path
 
 	if val, ok := globalMap[key]; ok {
 		val.Count = val.Count + 1
@@ -65,7 +65,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		//do something here
 	} else {
 		var m MonitoringPath
-		m.Path = req.URL.Path
+		m.UpstreamPath = req.URL.Path
 		m.Count = 1
 		m.Duration = time.Duration(elapsed.Nanoseconds())
 		m.AverageTime = val.Duration.Nanoseconds() / m.Count
@@ -90,12 +90,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 }
 
 func loadBalance(network, serviceName, serviceVersion string, apiDef apiDefinition) (net.Conn, error) {
-	log.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> loadBalance")
-	// endpoints, err := reg.Lookup(serviceName, serviceVersion)
 	endpoints := apiDef.endpoints
-	// if err != nil {
-	// 	return nil, err
-	// }
 	for {
 		// No more endpoint, stop
 		if len(endpoints) == 0 {
@@ -106,9 +101,11 @@ func loadBalance(network, serviceName, serviceVersion string, apiDef apiDefiniti
 		endpoint := endpoints[i]
 
 		// Try to connect
-		conn, err := net.Dial(network, endpoint.Host)
+		conn, err := (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial(network, endpoint)
 		if err != nil {
-			// reg.Failure(serviceName, serviceVersion, endpoint, err)
 			log.Printf("Error accessing %s/%s (%s): %s", serviceName, serviceVersion, endpoint, err)
 			// Failure: remove the endpoint from the current list and try again.
 			endpoints = append(endpoints[:i], endpoints[i+1:]...)
@@ -123,44 +120,32 @@ func loadBalance(network, serviceName, serviceVersion string, apiDef apiDefiniti
 
 // Handler .
 func (p *APIProxy) Handler(w http.ResponseWriter, req *http.Request) {
-	log.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Handler")
 	log.Printf("Proxy for %s to targets %+v with LB strategy %s", p.apiDef.path, p.apiDef.endpoints, p.apiDef.balancing)
 	(&httputil.ReverseProxy{
 		Director: func(req *http.Request) {
-			log.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Director")
 			req.URL.Scheme = "http"
-			req.URL.Host = p.apiDef.endpoints[0].Host
-			req.URL.Path = p.apiDef.endpoints[0].Path + req.URL.Path
-			req.Header.Add("X-Forwarded-Host", req.Host)
-			origin, _ := url.Parse(p.apiDef.endpoints[0].Host)
-			req.Header.Add("X-Origin-Host", origin.Host)
+			req.URL.Host = p.apiDef.path
 		},
 		Transport: p.transport,
 	}).ServeHTTP(w, req)
 }
 
 func newTransport(apiDef apiDefinition) *transport {
-	log.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> newTrasport")
 	tr := &http.Transport{
 		DisableKeepAlives:     true,
 		MaxIdleConnsPerHost:   100000,
 		DisableCompression:    true,
 		ResponseHeaderTimeout: 30 * time.Second,
 		Dial: func(network, addr string) (net.Conn, error) {
-			log.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> DIAL")
 			addr = strings.Split(addr, ":")[0]
 			tmp := strings.Split(addr, "/")
-			if len(tmp) != 2 {
+			if len(tmp) != 3 {
 				return nil, ErrInvalidService
 			}
 			return LoadBalance(network, tmp[0], tmp[1], apiDef)
 		},
-		// Dial: (&net.Dialer{
-		// 	Timeout:   30 * time.Second,
-		// 	KeepAlive: 30 * time.Second,
-		// }).Dial,
 	}
-	return &transport{tr}
+	return &transport{tr: tr, apiDef: apiDef}
 }
 
 // NewProxy returns a new Proxy instance.

@@ -38,25 +38,21 @@ api:
     path: /uaa-service
     version: 1
     proxy:
+      path: /api/v1
+      schema: http
       targets:
-      - schema: http
-        host: localhost:7777
-        path: /api/v1
-      - schema: http
-        host: localhost:7777
-        path: /api/v1
+      - localhost:7777
+      - localhost:7777
       balancing: # one from "round-robin" or "random"
         strategy: random
   - name: account
     path: /account-service
     version: 1
     proxy:
+      path: /api/v2
+      schema: http
       targets:
-      - schema: http
-        host: localhost:8888
-        path: /api/v1
-      - schema: http
-        host: localhost:8889
-        path: /api/v1
+      - localhost:7777
+      - localhost:7777
       balancing: # one from "round-robin" or "random"
         strategy: random

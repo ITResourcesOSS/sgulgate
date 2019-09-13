@@ -43,16 +43,11 @@ type (
 		Strategy string
 	}
 
-	// Target defines a proxy target struct.
-	Target struct {
-		Schema string
-		Host   string
-		Path   string
-	}
-
 	// Proxy defines targets and balancing for an api proxy.
 	Proxy struct {
-		Targets   []Target
+		Path      string
+		Schema    string
+		Targets   []string
 		Balancing BalancingStrategy
 	}
 
