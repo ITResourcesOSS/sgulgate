@@ -18,20 +18,20 @@ type apiDefinition struct {
 	name      string
 	path      string
 	balancing string
-	endpoints []string
+	endpoints []config.Target
 }
 
 // Gateway .
 type Gateway struct {
 	api     map[string]apiDefinition
-	proxies map[string]*Proxy
+	proxies map[string]*APIProxy
 }
 
 // New returns a new instance of the Gateway struct.
 func New() Gateway {
 	gw := Gateway{
 		api:     make(map[string]apiDefinition),
-		proxies: make(map[string]*Proxy),
+		proxies: make(map[string]*APIProxy),
 	}
 
 	apiConf := config.Config.API
@@ -43,14 +43,16 @@ func New() Gateway {
 			name:      endpoint.Name,
 			path:      path,
 			balancing: endpoint.Proxy.Balancing.Strategy,
-			endpoints: make([]string, 0),
+			endpoints: make([]config.Target, 0),
 		}
 
-		for _, target := range endpoint.Proxy.Targets {
-			apiDef.endpoints = append(
-				apiDef.endpoints,
-				fmt.Sprintf("%s://%s%s", target.Schema, target.Host, target.Path))
-		}
+		apiDef.endpoints = endpoint.Proxy.Targets
+		// for _, target := range endpoint.Proxy.Targets {
+		// 	apiDef.endpoints = append(
+		// 		apiDef.endpoints,
+		// 		fmt.Sprintf("%s%s", target.Host, target.Path))
+		// 	// apiDef.endpoints = append(apiDef.endpoints, target.Host)
+		// }
 		gw.api[path] = apiDef
 		gw.proxies[path] = NewProxy(apiDef)
 
@@ -88,8 +90,8 @@ func (gw Gateway) Start() {
 			return
 		}
 
-		upstreamProxy.Handler.ServeHTTP(w, req)
-
+		//upstreamProxy.Handler.ServeHTTP(w, req)
+		upstreamProxy.Handler(w, req)
 	})
 	gw.serve()
 }
