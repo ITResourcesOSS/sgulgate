@@ -70,6 +70,7 @@ type (
 		Service sgul.Service
 		Gateway Gateway
 		API     API
+		Log     sgul.Log
 	}
 )
 

@@ -5,17 +5,20 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 
+	"github.com/ITResourcesOSS/sgul"
+
 	"github.com/google/uuid"
 
 	"github.com/ITResourcesOSS/sgulgate/internal/config"
 )
+
+var logger = sgul.GetLogger().Sugar()
 
 // Key to use when setting the request ID.
 type ctxKeyRequestID int
@@ -67,7 +70,7 @@ func New() Gateway {
 	}
 
 	apiConf := config.Config.API
-	log.Printf("configuring %s definitions", apiConf.Name)
+	logger.Infof("configuring %s definitions", apiConf.Name)
 
 	for _, endpoint := range apiConf.Endpoints {
 		path := fmt.Sprintf("%s/v%s", endpoint.Path, endpoint.Version)
@@ -84,15 +87,10 @@ func New() Gateway {
 		gw.api[path] = apiDef
 		gw.proxies[path] = NewProxy(apiDef)
 
-		log.Printf("endpoint name: %s - path: %s - targets: %+v", apiDef.name, apiDef.path, apiDef.endpoints)
+		logger.Infof("endpoint configured [name: %s, path: %s, endpoints: %+v", apiDef.name, apiDef.path, apiDef.endpoints)
 	}
 
 	return gw
-}
-
-// PrintConfiguration .
-func (gw Gateway) PrintConfiguration() {
-	log.Printf("Gateway Configuation: %+v\n", config.Config)
 }
 
 func requestIDMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -112,8 +110,8 @@ func requestIDMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 // Start starts the Gateway starting the http server on configured endppoint.
 func (gw Gateway) Start() {
-	log.Println("starting Gateway...")
-	log.Printf("gateway endpoint: %s", gw.endpointPath())
+	logger.Info("starting Gateway...")
+	logger.Infof("gateway endpoint: %s", gw.endpointPath())
 
 	http.HandleFunc(gw.endpointPath(), requestIDMiddleware(func(w http.ResponseWriter, req *http.Request) {
 		req.URL.Path = gw.stripPath(req.URL.Path)
@@ -124,12 +122,12 @@ func (gw Gateway) Start() {
 		}
 
 		apiPath := fmt.Sprintf("/%s/%s", name, version)
-		log.Printf("serving %s", apiPath)
+		logger.Infof("serving %s", apiPath)
 
 		upstreamProxy := gw.proxies[apiPath]
 		if upstreamProxy == nil {
 			http.Error(w, ErrNoAPIFound.Error(), http.StatusNotFound)
-			log.Printf("error serving request: %s", ErrNoAPIFound.Error())
+			logger.Errorf("error serving request: %s", ErrNoAPIFound.Error())
 			return
 		}
 
@@ -140,8 +138,8 @@ func (gw Gateway) Start() {
 }
 
 func (gw Gateway) serve() {
-	log.Printf("endpoint started and listening on localhost:9000%s", config.Config.Gateway.Endpoint.Path)
-	log.Fatal(http.ListenAndServe(":9000", nil))
+	logger.Infof("endpoint started and listening on localhost:9000%s", config.Config.Gateway.Endpoint.Path)
+	logger.Fatal(http.ListenAndServe(":9000", nil))
 }
 
 // GetNameAndVersion .
@@ -177,4 +175,37 @@ func (gw Gateway) endpointPath() string {
 func (gw Gateway) stripPath(path string) string {
 	epath := sanitizePath(config.Config.Gateway.Endpoint.Path)
 	return strings.Replace(path, fmt.Sprintf("/%s", epath), "", -1)
+}
+
+// PrintApis prints out each api definition.
+func (gw Gateway) PrintApis() {
+	fmt.Println("\nAPI Definitions")
+	fmt.Println("================")
+	for _, apiDef := range gw.api {
+		fmt.Printf("* %s API definition\n", apiDef.name)
+		fmt.Printf("\t- name:\t\t\t%s\n", apiDef.name)
+		fmt.Printf("\t- path:\t\t\t%s\n", apiDef.path)
+		fmt.Printf("\t- balancing:\t\t%s\n", apiDef.balancing)
+		fmt.Printf("\t- upstream path:\t%s\n", apiDef.upstreamPath)
+		fmt.Printf("\t- upstream schema:\t%s\n", apiDef.upstreamSchema)
+		fmt.Printf("\t- upstream endpoints:\t%+v\n", apiDef.endpoints)
+	}
+	fmt.Println("---")
+}
+
+// PrintParams prints out all gateway configured params.
+func (gw Gateway) PrintParams() {
+	fmt.Println("\nAPI Gwateway params")
+	fmt.Println("===================")
+	gwConf := config.Config.Gateway
+	fmt.Println("* endpoint:")
+	fmt.Printf("\t- schema:\t\t%s\n", gwConf.Endpoint.Schema)
+	fmt.Printf("\t- path:\t\t\t%s\n", gwConf.Endpoint.Path)
+	fmt.Printf("\t- port:\t\t\t%d\n", gwConf.Endpoint.Port)
+	fmt.Println("* admin endpoint:")
+	fmt.Printf("\t- schema:\t\t%s\n", gwConf.Admin.Schema)
+	fmt.Printf("\t- path:\t\t\t%s\n", gwConf.Admin.Path)
+	fmt.Printf("\t- port:\t\t\t%d\n", gwConf.Admin.Port)
+	fmt.Printf("\t- security enabled:\t%+v\n", gwConf.Admin.Security.Enabled)
+	fmt.Println("---")
 }

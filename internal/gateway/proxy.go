@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -33,6 +31,7 @@ type Proxy interface {
 type APIProxy struct {
 	apiDef    apiDefinition
 	transport *transport
+	balancer  Balancer
 }
 
 // MonitoringPath .
@@ -72,43 +71,48 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		globalMap[key] = m
 	}
 	jsonMap, err := json.MarshalIndent(globalMap, "", "  ")
-	if err != nil {
-		fmt.Println("error:", err)
+	if err == nil {
+		logger.Debugf("Monitoring Graph: %s\n", jsonMap)
 	}
-	log.Printf("Monitoring Graph: %s\n", jsonMap)
 
 	body, err := httputil.DumpResponse(response, true)
 	if err != nil {
-		print("\n\nerror in dumb response")
+		logger.Error("error in dumb response")
 		// copying the response body did not work
 		return nil, err
 	}
 
-	log.Println("Response Body : ", string(body))
-	log.Println("Response Time:", time.Duration(elapsed.Nanoseconds()))
+	logger.Debugf("Response Body: %+v", string(body))
+	logger.Infof("Response Time: %s", time.Duration(elapsed.Nanoseconds()))
 	return response, nil
 }
 
 func loadBalance(network, serviceName, serviceVersion string, apiDef apiDefinition) (net.Conn, error) {
 	endpoints := apiDef.endpoints
+	balancer := BalancerFor(apiDef.balancing)
 	for {
 		// No more endpoint, stop
+		// TODO: maybe is better to return an err
 		if len(endpoints) == 0 {
 			break
 		}
-		// Select a random endpoint
-		i := rand.Intn(100) % len(endpoints)
-		endpoint := endpoints[i]
 
-		// Try to connect
+		// selects the endpoint
+		_, endpoint := balancer.Balance(endpoints)
+		logger.Infof("balancing request to %s", endpoint)
+
+		// try to connect
 		conn, err := (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).Dial(network, endpoint)
 		if err != nil {
-			log.Printf("Error accessing %s/%s (%s): %s", serviceName, serviceVersion, endpoint, err)
-			// Failure: remove the endpoint from the current list and try again.
-			endpoints = append(endpoints[:i], endpoints[i+1:]...)
+			logger.Errorf("Error accessing %s/%s (%s): %s", serviceName, serviceVersion, endpoint, err)
+			// // Failure: remove the endpoint from the current list and try again.
+			// endpoints = append(endpoints[:idx], endpoints[idx+1:]...)
+			// TODO: add a tag to the endpoint
+
+			// retry connection to a different endpoint (according to the load balancing strategy)
 			continue
 		}
 		// Success: return the connection.
@@ -120,7 +124,7 @@ func loadBalance(network, serviceName, serviceVersion string, apiDef apiDefiniti
 
 // Handler .
 func (p *APIProxy) Handler(w http.ResponseWriter, req *http.Request) {
-	log.Printf("Proxy for %s to targets %+v with LB strategy %s", p.apiDef.path, p.apiDef.endpoints, p.apiDef.balancing)
+	logger.Infof("Proxy for %s to targets %+v with LB strategy %s", p.apiDef.path, p.apiDef.endpoints, p.apiDef.balancing)
 	(&httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			req.URL.Scheme = "http"
@@ -137,11 +141,13 @@ func newTransport(apiDef apiDefinition) *transport {
 		DisableCompression:    true,
 		ResponseHeaderTimeout: 30 * time.Second,
 		Dial: func(network, addr string) (net.Conn, error) {
+			logger.Debug("dialing to upstream backend api service")
 			addr = strings.Split(addr, ":")[0]
 			tmp := strings.Split(addr, "/")
 			if len(tmp) != 3 {
 				return nil, ErrInvalidService
 			}
+
 			return LoadBalance(network, tmp[0], tmp[1], apiDef)
 		},
 	}
