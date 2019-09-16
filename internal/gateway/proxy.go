@@ -44,14 +44,13 @@ type MonitoringPath struct {
 
 var globalMap = make(map[string]MonitoringPath)
 
-func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	key := req.Method + "-" + t.apiDef.path + req.URL.Path
 	start := time.Now()
 	//response, err := http.DefaultTransport.RoundTrip(req)
 	req.URL.Path = t.apiDef.upstreamPath + req.URL.Path
 	response, err := t.tr.RoundTrip(req)
 	if err != nil {
-		print("\n\ncame in error resp here", err)
 		return nil, err
 	}
 	elapsed := time.Since(start)
@@ -90,7 +89,8 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 func loadBalance(network, serviceName, serviceVersion string, apiDef apiDefinition) (net.Conn, error) {
 	endpoints := apiDef.endpoints
 	balancer := BalancerFor(apiDef.balancing)
-	for {
+	maxRetry := len(endpoints) * 3
+	for retry := 1; retry <= maxRetry; retry++ {
 		// No more endpoint, stop
 		// TODO: maybe is better to return an err
 		if len(endpoints) == 0 {
@@ -131,6 +131,11 @@ func (p *APIProxy) Handler(w http.ResponseWriter, req *http.Request) {
 			req.URL.Host = p.apiDef.path
 		},
 		Transport: p.transport,
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			logger.Errorf("gateway error: %s", err)
+			w.WriteHeader(http.StatusBadGateway)
+			w.Write([]byte(fmt.Sprintf("Bad Gateway - %s\n", err)))
+		},
 	}).ServeHTTP(w, req)
 }
 

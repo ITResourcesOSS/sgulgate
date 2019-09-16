@@ -126,7 +126,7 @@ func (gw Gateway) Start() {
 
 		upstreamProxy := gw.proxies[apiPath]
 		if upstreamProxy == nil {
-			http.Error(w, ErrNoAPIFound.Error(), http.StatusNotFound)
+			http.Error(w, fmt.Sprintf("Bad Gateway - %s\n", ErrNoAPIFound.Error()), http.StatusBadGateway)
 			logger.Errorf("error serving request: %s", ErrNoAPIFound.Error())
 			return
 		}
