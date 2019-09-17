@@ -37,6 +37,7 @@ type apiDefinition struct {
 	balancing      string
 	upstreamPath   string
 	upstreamSchema string
+	maxRetries     int
 	endpoints      []string
 }
 
@@ -80,6 +81,7 @@ func New() Gateway {
 			balancing:      endpoint.Proxy.Balancing.Strategy,
 			upstreamPath:   endpoint.Proxy.Path,
 			upstreamSchema: endpoint.Proxy.Schema,
+			maxRetries:     endpoint.Proxy.MaxRetries,
 			endpoints:      make([]string, 0),
 		}
 

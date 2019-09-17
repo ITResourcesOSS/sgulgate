@@ -9,6 +9,8 @@ import (
 	"net/http/httputil"
 	"strings"
 	"time"
+
+	"github.com/ITResourcesOSS/sgulgate/internal/config"
 )
 
 // ErrInvalidService returned if there is no api definition for service/version.
@@ -89,29 +91,21 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 func loadBalance(network, serviceName, serviceVersion string, apiDef apiDefinition) (net.Conn, error) {
 	endpoints := apiDef.endpoints
 	balancer := BalancerFor(apiDef.balancing)
-	maxRetry := len(endpoints) * 3
-	for retry := 1; retry <= maxRetry; retry++ {
-		// No more endpoint, stop
-		// TODO: maybe is better to return an err
-		if len(endpoints) == 0 {
-			break
-		}
-
+	maxRetries := len(endpoints) * apiDef.maxRetries
+	logger.Infof("max retries: %d * len(endpoints) = %d", apiDef.maxRetries, maxRetries)
+	for retry := 1; retry <= maxRetries; retry++ {
 		// selects the endpoint
 		_, endpoint := balancer.Balance(endpoints)
 		logger.Infof("balancing request to %s", endpoint)
 
 		// try to connect
 		conn, err := (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
+			Timeout:   time.Duration(config.Config.Gateway.Dial.UpstreamTimeout) * time.Second,
+			KeepAlive: time.Duration(config.Config.Gateway.Dial.KeepAlive) * time.Second,
+			DualStack: config.Config.Gateway.Dial.DualStack,
 		}).Dial(network, endpoint)
 		if err != nil {
 			logger.Errorf("Error accessing %s/%s (%s): %s", serviceName, serviceVersion, endpoint, err)
-			// // Failure: remove the endpoint from the current list and try again.
-			// endpoints = append(endpoints[:idx], endpoints[idx+1:]...)
-			// TODO: add a tag to the endpoint
-
 			// retry connection to a different endpoint (according to the load balancing strategy)
 			continue
 		}
@@ -139,12 +133,14 @@ func (p *APIProxy) Handler(w http.ResponseWriter, req *http.Request) {
 	}).ServeHTTP(w, req)
 }
 
+/*
+maxIdleConnsPerHost: 1024
+      idleConnTimeout: 90
+      tlsHandshakeTimeout: 10
+      expectContinueTimeout: 1*/
 func newTransport(apiDef apiDefinition) *transport {
+	transportConf := config.Config.Gateway.Transport
 	tr := &http.Transport{
-		DisableKeepAlives:     true,
-		MaxIdleConnsPerHost:   100000,
-		DisableCompression:    true,
-		ResponseHeaderTimeout: 30 * time.Second,
 		Dial: func(network, addr string) (net.Conn, error) {
 			logger.Debug("dialing to upstream backend api service")
 			addr = strings.Split(addr, ":")[0]
@@ -155,6 +151,14 @@ func newTransport(apiDef apiDefinition) *transport {
 
 			return LoadBalance(network, tmp[0], tmp[1], apiDef)
 		},
+		DisableKeepAlives:     transportConf.DisableKeepAlives,
+		DisableCompression:    transportConf.DisableCompression,
+		ResponseHeaderTimeout: time.Duration(transportConf.ResponseHeaderTimeout) * time.Second,
+		MaxIdleConns:          transportConf.MaxIdleConnections,
+		MaxIdleConnsPerHost:   transportConf.MaxIdleConnsPerHost,
+		IdleConnTimeout:       time.Duration(transportConf.MaxIdleConnsPerHost) * time.Second,
+		TLSHandshakeTimeout:   time.Duration(transportConf.TLSHandshakeTimeout) * time.Second,
+		ExpectContinueTimeout: time.Duration(transportConf.ExpectContinueTimeout) * time.Second,
 	}
 	return &transport{tr: tr, apiDef: apiDef}
 }

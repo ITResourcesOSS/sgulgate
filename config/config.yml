@@ -18,6 +18,20 @@ gateway:
     schema: http
     path: /sosm-api/
     port: 9000
+  proxy:
+    transport:
+      maxIdleConnections: 1024
+      maxIdleConnsPerHost: 1024
+      idleConnTimeout: 90
+      tlsHandshakeTimeout: 10
+      expectContinueTimeout: 1
+      responseHeaderTimeout: 30
+      disableKeepAlives: true
+      disableCompression: true
+    dial:
+      upstreamTimeout: 8
+      keepAlive: 8
+      dualStack: false
   admin:
     schema: http
     path: /sosm-api-admin
@@ -42,6 +56,7 @@ gateway:
         - Authorization
         - Content-Type
         - X-CSRF-Token
+
 api:
   name: SosMedicoAPI
   endpoints:
@@ -54,6 +69,7 @@ api:
       targets:
       - localhost:7777
       - localhost:7778
+      maxRetries: 3
       balancing: # one from "round-robin" or "random"
         strategy: round-robin
   - name: account
@@ -65,6 +81,7 @@ api:
       targets:
       - localhost:7777
       - localhost:7778
+      maxRetries: 3
       balancing: # one from "round-robin" or "random"
         strategy: random
 
