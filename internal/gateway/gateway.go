@@ -11,11 +11,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ITResourcesOSS/sgul"
+	"github.com/itross/sgul"
 
 	"github.com/google/uuid"
 
-	"github.com/ITResourcesOSS/sgulgate/internal/config"
+	"github.com/itross/sgulgate/internal/config"
 )
 
 var logger = sgul.GetLogger().Sugar()

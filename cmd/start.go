@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/ITResourcesOSS/sgulgate/internal/gateway"
+	"github.com/itross/sgulgate/internal/gateway"
 	"github.com/spf13/cobra"
 )
 

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ITResourcesOSS/sgulgate/internal/config"
+	"github.com/itross/sgulgate/internal/config"
 )
 
 // ErrInvalidService returned if there is no api definition for service/version.

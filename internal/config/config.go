@@ -3,7 +3,7 @@ package config
 import (
 	"sync"
 
-	"github.com/ITResourcesOSS/sgul"
+	"github.com/itross/sgul"
 )
 
 type (

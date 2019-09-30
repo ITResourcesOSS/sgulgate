@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ITResourcesOSS/sgul"
-	"github.com/ITResourcesOSS/sgulgate/internal/config"
+	"github.com/itross/sgul"
+	"github.com/itross/sgulgate/internal/config"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/ITResourcesOSS/sgulgate/cmd"
+import "github.com/itross/sgulgate/cmd"
 
 // import (
 // 	"github.com/ITResourcesOSS/sgulgate/internal/config"
